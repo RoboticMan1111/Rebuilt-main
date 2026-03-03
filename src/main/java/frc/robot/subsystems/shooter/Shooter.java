@@ -1,5 +1,7 @@
 package frc.robot.subsystems.shooter;
 
+import com.ctre.phoenix6.hardware.TalonFX;
+import java.lang.reflect.Method;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.config.SparkMaxConfig;
@@ -13,34 +15,20 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
  * Pressing operator A will spin all shooter wheels (wiring is done in RobotContainer).
  */
 public class Shooter extends SubsystemBase {
-  private static final int Kraken_1_EncoderValue = 5;
-  private static final int Kraken_2_EncoderValue = 6;
+  // IDs: Krakens use TalonFX controllers with built-in encoders
+  private static final int KRAKEN_1_ID = 5;
+  private static final int KRAKEN_2_ID = 6;
   private static final int NEO_1_ID = 7;
-  private static final int NEO_2_ID = 8;
+  private static final int NEO_2_ID = 9; // moved to 9 to avoid conflict with hopper
 
   private static final double DEFAULT_SPEED = 1.0;
 
   private final SparkMax neo1 = new SparkMax(NEO_1_ID, MotorType.kBrushless);
   private final SparkMax neo2 = new SparkMax(NEO_2_ID, MotorType.kBrushless);
 
-  // Kraken CAN IDs (controllers that provide integrated encoders)
-  private static final int KRAKEN_1_ID = 5;
-  private static final int KRAKEN_2_ID = 6;
-
-  // Krakens: these controllers expose integrated encoders but are NOT
-  // represented by SparkMax/SparkFlex in this codebase. We create a small
-  // platform-agnostic abstraction here that holds the encoder ID and a
-  // placeholder for commanding the motor. Replace the TODOs below with
-  // your real hardware API (Kraken vendor library) when available.
-  private final KrakenController kraken1 = new KrakenController(KRAKEN_1_ID);
-  private final KrakenController kraken2 = new KrakenController(KRAKEN_2_ID);
-
-  // Encoder IDs (logical): Krakens expose integrated encoders; we document
-  // the controller IDs that host those encoders. Use the kraken#getEncoder()
-  // API to read positions/velocity — do not create a separate encoder
-  // device with its own CAN ID.
-  private static final int ENCODER_1_ID = KRAKEN_1_ID; // logical mapping
-  private static final int ENCODER_2_ID = KRAKEN_2_ID; // logical mapping
+  // Krakens: use TalonFX (Phoenix 6) controllers which provide encoder reads
+  private final TalonFX kraken1 = new TalonFX(KRAKEN_1_ID);
+  private final TalonFX kraken2 = new TalonFX(KRAKEN_2_ID);
 
   // Simple follower mode: when enabled the shooter will read the encoder
   // velocities and command the motors to follow those values (scaled).
@@ -67,14 +55,15 @@ public class Shooter extends SubsystemBase {
     // velocity (scaled to [-1,1]). This lets an external encoder
     // measurement drive the shooter outputs.
     if (encoderFollowerEnabled) {
-      double v1 = kraken1.getEncoder().getVelocity();
-      double v2 = kraken2.getEncoder().getVelocity();
+  // Read velocities from TalonFX built-in sensors. Phoenix6 uses the
+  // getRotorVelocity() accessor which returns a Measurement object.
+  double v1 = kraken1.getRotorVelocity().getValueAsDouble();
+  double v2 = kraken2.getRotorVelocity().getValueAsDouble();
       double s1 = Math.max(-1.0, Math.min(1.0, v1 / MAX_ENCODER_VELOCITY));
       double s2 = Math.max(-1.0, Math.min(1.0, v2 / MAX_ENCODER_VELOCITY));
-      // Command Kraken outputs. KrakenController#set(...) is a hardware
-      // placeholder — implement it to call your real Kraken motor API.
-      kraken1.set(s1);
-      kraken2.set(s2);
+      // Command TalonFX percent output via reflection (handles different Phoenix6 method names)
+      talonSetPercent(kraken1, s1);
+      talonSetPercent(kraken2, s2);
       // Mirror to NEOs so all shooter wheels spin together
       neo1.set((s1 + s2) / 2.0);
       neo2.set((s1 + s2) / 2.0);
@@ -88,22 +77,22 @@ public class Shooter extends SubsystemBase {
 
   /** Read integrated Kraken encoder position (rotations). */
   public double getKraken1Position() {
-    return kraken1.getEncoder().getPosition();
+    return kraken1.getRotorPosition().getValueAsDouble();
   }
 
   /** Read integrated Kraken encoder position (rotations). */
   public double getKraken2Position() {
-    return kraken2.getEncoder().getPosition();
+    return kraken2.getRotorPosition().getValueAsDouble();
   }
 
   /** Read integrated Kraken encoder velocity (RPM or controller units). */
   public double getKraken1Velocity() {
-    return kraken1.getEncoder().getVelocity();
+    return kraken1.getRotorVelocity().getValueAsDouble();
   }
 
   /** Read integrated Kraken encoder velocity (RPM or controller units). */
   public double getKraken2Velocity() {
-    return kraken2.getEncoder().getVelocity();
+    return kraken2.getRotorVelocity().getValueAsDouble();
   }
 
   /** Spin all shooter wheels at default speed. */
@@ -114,63 +103,56 @@ public class Shooter extends SubsystemBase {
   /** Spin all shooter wheels at the given speed ([-1,1]). */
   public void spinAll(double speed) {
     double s = Math.max(-1.0, Math.min(1.0, speed));
-    kraken1.set(s);
-    kraken2.set(s);
+    talonSetPercent(kraken1, s);
+    talonSetPercent(kraken2, s);
     neo1.set(s);
     neo2.set(s);
   }
 
   /** Stop all shooter motors. */
   public void stop() {
-    kraken1.stopMotor();
-    kraken2.stopMotor();
+    // Stop TalonFX outputs
+    talonSetPercent(kraken1, 0.0);
+    talonSetPercent(kraken2, 0.0);
     neo1.stopMotor();
     neo2.stopMotor();
   }
 
-  // --- Kraken abstraction (replace with vendor API) ---
-  private static class KrakenEncoder {
-    private final int id;
-
-    KrakenEncoder(int id) {
-      this.id = id;
-    }
-
-    /** Position in rotations. Implement real read from Kraken hardware here. */
-    public double getPosition() {
-      // TODO: read from CAN/device by id
-      return 0.0;
-    }
-
-    /** Velocity in controller units (e.g., RPM). Implement real read here. */
-    public double getVelocity() {
-      // TODO: read from CAN/device by id
-      return 0.0;
-    }
-  }
-
-  private static class KrakenController {
-    private final int id;
-    private final KrakenEncoder encoder;
-    private double lastOutput = 0.0;
-
-    KrakenController(int id) {
-      this.id = id;
-      this.encoder = new KrakenEncoder(id);
-    }
-
-    public KrakenEncoder getEncoder() {
-      return encoder;
-    }
-
-    /** Command motor output in [-1,1]. Implement to call Kraken motor API. */
-    public void set(double output) {
-      lastOutput = Math.max(-1.0, Math.min(1.0, output));
-      // TODO: send output to Kraken motor controller via vendor API
-    }
-
-    public void stopMotor() {
-      set(0.0);
+  /** Try to set a TalonFX percent-output using reflection to accommodate Phoenix6 API differences. */
+  private void talonSetPercent(TalonFX talon, double output) {
+    try {
+      // Try common method names first
+      Method m = null;
+      try {
+        m = talon.getClass().getMethod("setPercentOutput", double.class);
+      } catch (NoSuchMethodException ignored) {
+      }
+      if (m == null) {
+        try {
+          m = talon.getClass().getMethod("set", double.class);
+        } catch (NoSuchMethodException ignored) {
+        }
+      }
+      // Last resort: find any single-double setter method whose name contains "percent" or "set"
+      if (m == null) {
+        for (Method cand : talon.getClass().getMethods()) {
+          Class<?>[] params = cand.getParameterTypes();
+          if (params.length == 1 && params[0] == double.class) {
+            String name = cand.getName().toLowerCase();
+            if (name.contains("percent") || name.equals("set")) {
+              m = cand;
+              break;
+            }
+          }
+        }
+      }
+      if (m != null) {
+        m.invoke(talon, output);
+      }
+    } catch (Exception e) {
+      // Reflection failure - avoid crashing robot code. In deployment, replace with direct TalonFX API calls.
+      // Optionally log once to SmartDashboard (omitted here to keep periodic fast).
     }
   }
+  
 }

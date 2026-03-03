@@ -19,6 +19,8 @@ import frc.robot.subsystems.intake.AprilTag;
 import frc.robot.subsystems.intake.PivotWheels;
 import frc.robot.subsystems.intake.Wheel;
 import frc.robot.subsystems.auto.BlueLeftAuto;
+import frc.robot.subsystems.auto.BlueMiddleAuto;
+import frc.robot.subsystems.auto.RedMiddleAuto;
 import frc.robot.subsystems.intake.hopper.hopper;
 import frc.robot.subsystems.shooter.Shooter;
 import frc.robot.subsystems.intake.intake;
@@ -71,14 +73,14 @@ public class RobotContainer {
       m_pivotWheels,
       m_wheel));
 
-    autoChooser.setDefaultOption("BlueLeftAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter));
-    // Provide other (placeholder/fallback) options so the driver station chooser
-    // has multiple selections. These currently reuse BlueLeftAuto implementation
-    // as a safe fallback until specific auto implementations are added.
-    autoChooser.addOption("BlueMiddleAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter));
-    autoChooser.addOption("BlueRightAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter));
-    autoChooser.addOption("RedLeftAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter));
-    autoChooser.addOption("RedMiddleAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter));
+  autoChooser.setDefaultOption("BlueLeftAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
+  // Provide other (placeholder/fallback) options so the driver station chooser
+  // has multiple selections. These currently reuse BlueLeftAuto implementation
+  // as a safe fallback until specific auto implementations are added.
+  autoChooser.addOption("BlueMiddleAuto", BlueMiddleAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
+  autoChooser.addOption("BlueRightAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
+  autoChooser.addOption("RedLeftAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
+  autoChooser.addOption("RedMiddleAuto", RedMiddleAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
 
     configureBindings();
   }
@@ -205,7 +207,7 @@ public class RobotContainer {
     if (selected != null) {
       return selected;
     }
-    DriverStation.reportWarning("Auto chooser returned null, falling back to BlueLeftAuto.", false);
-    return BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter);
+  DriverStation.reportWarning("Auto chooser returned null, falling back to BlueLeftAuto.", false);
+  return BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper);
   }
 }

@@ -10,6 +10,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
+import java.util.Set;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import frc.robot.commands.Swerve.TeleopSwerve;
@@ -146,29 +147,35 @@ public class RobotContainer {
         Commands.waitSeconds(2.0),
         Commands.runOnce(m_shooter::stop, m_shooter));
 
-    // Command to align to hub/tag using the existing auto helper (for tags 25/26)
-    Command alignToHub = BlueLeftAuto.createTagAlignCommand(m_swerveSubsystem, m_aprilTag)
-        .andThen(Commands.runOnce(m_swerveSubsystem::stop, m_swerveSubsystem));
+    
 
     // Main sequence: detect any visible tag, then branch based on ID
+    Command pollForTag = Commands.run(
+            () -> m_aprilTag.getBestVisibleTarget().ifPresent(t -> detectedId[0] = t.getFiducialId()))
+        .until(() -> detectedId[0] != -1)
+        .withTimeout(1.5);
+
+    // Defer branch selection until after detection so we can build a command
+    // that uses the detected tag id at runtime.
+    Command branch = Commands.defer(() -> {
+          int id = detectedId[0];
+          if (id == 23) {
+            return Commands.sequence(rotateToShootHeading, shootSequence);
+          }
+          // For hub tags on either alliance, align to the detected tag then shoot.
+          if (id == 25 || id == 26 || id == 9 || id == 10) {
+            return Commands.sequence(BlueLeftAuto.createTagAlignCommand(m_swerveSubsystem, m_aprilTag, id), shootSequence);
+          }
+          return Commands.runOnce(() -> SmartDashboard.putString("Vision/ScanResult", "No actionable tag"));
+        }, Set.of(m_swerveSubsystem, m_shooter));
+
     return Commands.sequence(
         Commands.runOnce(() -> {
           detectedId[0] = -1;
           m_aprilTag.updateOriginFromAlliance(DriverStation.getAlliance());
         }),
-        // Poll camera until we see any target or timeout
-        Commands.run(() -> m_aprilTag.getBestVisibleTarget().ifPresent(t -> detectedId[0] = t.getFiducialId()))
-            .until(() -> detectedId[0] != -1)
-            .withTimeout(1.5),
-        // Branch: if tag 23 -> rotate to fixed heading then shoot
-        Commands.either(
-            Commands.sequence(rotateToShootHeading, shootSequence),
-            // Else: if tag 25 or 26 -> align to hub and shoot, otherwise do nothing
-            Commands.either(
-                Commands.sequence(alignToHub, shootSequence),
-                Commands.runOnce(() -> SmartDashboard.putString("Vision/ScanResult", "No actionable tag")),
-                () -> detectedId[0] == 25 || detectedId[0] == 26),
-            () -> detectedId[0] == 23));
+        pollForTag,
+        branch);
   }
 
   /** Returns selected autonomous command or null. */

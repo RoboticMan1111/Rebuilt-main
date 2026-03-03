@@ -56,7 +56,12 @@ public class BlueLeftAuto {
     }
 
     public static Command createTagAlignCommand(SwerveSubsystem swerveSubsystem, AprilTag aprilTag) {
-        return alignToTagShootPose(swerveSubsystem, aprilTag);
+        return alignToTagShootPose(swerveSubsystem, aprilTag, TARGET_TAG_ID);
+    }
+
+    /** Create an align-to-tag command for an arbitrary tag ID. */
+    public static Command createTagAlignCommand(SwerveSubsystem swerveSubsystem, AprilTag aprilTag, int tagId) {
+        return alignToTagShootPose(swerveSubsystem, aprilTag, tagId);
     }
 
     public static Command createScanAndRunTagCommand(SwerveSubsystem swerveSubsystem, AprilTag aprilTag) {
@@ -112,18 +117,18 @@ public class BlueLeftAuto {
                 .andThen(Commands.runOnce(swerveSubsystem::stop, swerveSubsystem));
     }
 
-    private static Command alignToTagShootPose(SwerveSubsystem swerveSubsystem, AprilTag aprilTag) {
+    private static Command alignToTagShootPose(SwerveSubsystem swerveSubsystem, AprilTag aprilTag, int tagId) {
         return Commands.run(
                         () -> {
-                            aprilTag.logVision(TARGET_TAG_ID);
-                            Optional<Transform3d> cameraToTagOptional = aprilTag.getCameraToTagTransform(TARGET_TAG_ID);
+                            aprilTag.logVision(tagId);
+                            Optional<Transform3d> cameraToTagOptional = aprilTag.getCameraToTagTransform(tagId);
 
                             if (cameraToTagOptional.isPresent()) {
-                                driveFromVisionMeasurement(swerveSubsystem, aprilTag, cameraToTagOptional.get());
+                                driveFromVisionMeasurement(swerveSubsystem, aprilTag, cameraToTagOptional.get(), tagId);
                                 return;
                             }
 
-                            Optional<Pose2d> tagPoseOptional = aprilTag.getTagPose2d(TARGET_TAG_ID);
+                            Optional<Pose2d> tagPoseOptional = aprilTag.getTagPose2d(tagId);
                             if (tagPoseOptional.isEmpty()) {
                                 swerveSubsystem.stop();
                                 return;
@@ -157,15 +162,20 @@ public class BlueLeftAuto {
                             swerveSubsystem.driveFieldRelative(new ChassisSpeeds(vx, vy, omega));
                         },
                         swerveSubsystem)
-                .until(() -> atShootAlignmentTarget(swerveSubsystem, aprilTag))
+                .until(() -> atShootAlignmentTarget(swerveSubsystem, aprilTag, tagId))
                 .withTimeout(2.0)
                 .andThen(Commands.runOnce(swerveSubsystem::stop, swerveSubsystem));
     }
 
     private static void driveFromVisionMeasurement(
             SwerveSubsystem swerveSubsystem, AprilTag aprilTag, Transform3d cameraToTag) {
+        driveFromVisionMeasurement(swerveSubsystem, aprilTag, cameraToTag, TARGET_TAG_ID);
+    }
+
+    private static void driveFromVisionMeasurement(
+            SwerveSubsystem swerveSubsystem, AprilTag aprilTag, Transform3d cameraToTag, int tagId) {
         Optional<org.photonvision.targeting.PhotonTrackedTarget> trackedTarget =
-                aprilTag.getLatestTrackedTarget(TARGET_TAG_ID);
+                aprilTag.getLatestTrackedTarget(tagId);
         if (trackedTarget.isEmpty()) {
             swerveSubsystem.stop();
             return;
@@ -175,9 +185,9 @@ public class BlueLeftAuto {
         double lateralError = cameraToTag.getY();
         double yawErrorDeg = trackedTarget.get().getYaw();
 
-        SmartDashboard.putNumber("Vision/Tag" + TARGET_TAG_ID + "/RangeErrorM", rangeError);
-        SmartDashboard.putNumber("Vision/Tag" + TARGET_TAG_ID + "/LateralErrorM", lateralError);
-        SmartDashboard.putNumber("Vision/Tag" + TARGET_TAG_ID + "/YawErrorDeg", yawErrorDeg);
+    SmartDashboard.putNumber("Vision/Tag" + tagId + "/RangeErrorM", rangeError);
+    SmartDashboard.putNumber("Vision/Tag" + tagId + "/LateralErrorM", lateralError);
+    SmartDashboard.putNumber("Vision/Tag" + tagId + "/YawErrorDeg", yawErrorDeg);
 
         double vx = MathUtil.clamp(rangeError * VISION_FORWARD_KP, -MAX_TRANSLATION_MPS, MAX_TRANSLATION_MPS);
         double vy = MathUtil.clamp(lateralError * VISION_LATERAL_KP, -MAX_TRANSLATION_MPS, MAX_TRANSLATION_MPS);
@@ -197,10 +207,14 @@ public class BlueLeftAuto {
     }
 
     private static boolean atShootAlignmentTarget(SwerveSubsystem swerveSubsystem, AprilTag aprilTag) {
-        Optional<Transform3d> cameraToTagOptional = aprilTag.getCameraToTagTransform(TARGET_TAG_ID);
+        return atShootAlignmentTarget(swerveSubsystem, aprilTag, TARGET_TAG_ID);
+    }
+
+    private static boolean atShootAlignmentTarget(SwerveSubsystem swerveSubsystem, AprilTag aprilTag, int tagId) {
+        Optional<Transform3d> cameraToTagOptional = aprilTag.getCameraToTagTransform(tagId);
         if (cameraToTagOptional.isPresent()) {
             Optional<org.photonvision.targeting.PhotonTrackedTarget> trackedTarget =
-                    aprilTag.getLatestTrackedTarget(TARGET_TAG_ID);
+                    aprilTag.getLatestTrackedTarget(tagId);
             if (trackedTarget.isEmpty()) {
                 return false;
             }
@@ -215,7 +229,7 @@ public class BlueLeftAuto {
                     && yawError <= VISION_YAW_TOLERANCE_DEG;
         }
 
-        Optional<Pose2d> tagPoseOptional = aprilTag.getTagPose2d(TARGET_TAG_ID);
+        Optional<Pose2d> tagPoseOptional = aprilTag.getTagPose2d(tagId);
         if (tagPoseOptional.isEmpty()) {
             return false;
         }

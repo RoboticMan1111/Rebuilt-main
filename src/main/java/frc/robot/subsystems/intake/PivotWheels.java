@@ -31,6 +31,11 @@ public class PivotWheels extends SubsystemBase {
     pivotWheelsMotor.set(MathUtil.clamp(INTAKE_OUTPUT, -1.0, 1.0));
   }
 
+  /** Set pivot wheels speed directly ([-1,1]). Right trigger -> positive. */
+  public void set(double speed) {
+    pivotWheelsMotor.set(MathUtil.clamp(speed, -1.0, 1.0));
+  }
+
   public void stop() {
     pivotWheelsMotor.stopMotor();
   }

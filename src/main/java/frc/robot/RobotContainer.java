@@ -17,6 +17,7 @@ import frc.robot.commands.Swerve.TeleopSwerve;
 import frc.robot.subsystems.Swerve.SwerveSubsystem;
 import frc.robot.subsystems.intake.AprilTag;
 import frc.robot.subsystems.intake.PivotWheels;
+import frc.robot.subsystems.intake.Wheel;
 import frc.robot.subsystems.auto.BlueLeftAuto;
 import frc.robot.subsystems.intake.hopper.hopper;
 import frc.robot.subsystems.shooter.Shooter;
@@ -33,6 +34,7 @@ public class RobotContainer {
   private final hopper m_hopper = new hopper();
   private final Shooter m_shooter = new Shooter();
   private final PivotWheels m_pivotWheels = new PivotWheels();
+  private final Wheel m_wheel = new Wheel();
   private final intake m_intakePivot = new intake();
   private final CommandXboxController m_driverController = new CommandXboxController(0);
   private final CommandXboxController m_operatorController = new CommandXboxController(1);
@@ -56,6 +58,18 @@ public class RobotContainer {
                 m_hopper.setFromTriggers(
                     m_operatorController.getLeftTriggerAxis(), m_operatorController.getRightTriggerAxis()),
             m_hopper));
+
+  // Driver controls pivot wheels & blue wheels with triggers (right = intake in, left = reverse)
+  m_pivotWheels.setDefaultCommand(
+    Commands.run(
+      () -> {
+        double out = m_driverController.getRightTriggerAxis() - m_driverController.getLeftTriggerAxis();
+        m_pivotWheels.set(out);
+        // Blue wheels: Wheel.setFromTriggers expects (left,right)
+        m_wheel.setFromTriggers(m_driverController.getLeftTriggerAxis(), m_driverController.getRightTriggerAxis());
+      },
+      m_pivotWheels,
+      m_wheel));
 
     autoChooser.setDefaultOption("BlueLeftAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter));
     // Provide other (placeholder/fallback) options so the driver station chooser

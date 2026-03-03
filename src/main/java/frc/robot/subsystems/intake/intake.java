@@ -13,7 +13,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 public class intake extends SubsystemBase {
-  private static final int PIVOT_MOTOR_ID = 11;
+  private static final int PIVOT_MOTOR_ID = 13;
   private static final double PIVOT_GEAR_RATIO = 45.0; // motor rotations : arm rotations
   private static final double PIVOT_DEADBAND = 0.10;
   private static final double MAX_MANUAL_OUTPUT = 0.30;

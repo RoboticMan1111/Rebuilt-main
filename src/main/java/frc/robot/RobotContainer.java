@@ -20,6 +20,7 @@ import frc.robot.subsystems.intake.PivotWheels;
 import frc.robot.subsystems.intake.Wheel;
 import frc.robot.subsystems.auto.BlueLeftAuto;
 import frc.robot.subsystems.auto.BlueMiddleAuto;
+import frc.robot.subsystems.auto.RedLeftAuto;
 import frc.robot.subsystems.auto.RedMiddleAuto;
 import frc.robot.subsystems.intake.hopper.hopper;
 import frc.robot.subsystems.shooter.Shooter;
@@ -79,7 +80,7 @@ public class RobotContainer {
   // as a safe fallback until specific auto implementations are added.
   autoChooser.addOption("BlueMiddleAuto", BlueMiddleAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
   autoChooser.addOption("BlueRightAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
-  autoChooser.addOption("RedLeftAuto", BlueLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
+  autoChooser.addOption("RedLeftAuto", RedLeftAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
   autoChooser.addOption("RedMiddleAuto", RedMiddleAuto.build(m_swerveSubsystem, m_aprilTag, m_shooter, m_pivotWheels, m_intakePivot, m_hopper));
 
     configureBindings();
@@ -164,11 +165,18 @@ public class RobotContainer {
         .withTimeout(1.5)
         .andThen(Commands.runOnce(m_swerveSubsystem::stop, m_swerveSubsystem));
 
-    // Command sequence to shoot for a short duration
+    // Command sequence to shoot for a short duration.
+    // Feed path uses hopper.intakeIn(), which drives both hopper motors (including CAN ID 25).
     Command shootSequence = Commands.sequence(
-        Commands.runOnce(() -> m_shooter.spinAll(0.5), m_shooter),
+        Commands.runOnce(() -> {
+          m_shooter.spinAll(0.5);
+          m_hopper.intakeIn();
+        }, m_shooter, m_hopper),
         Commands.waitSeconds(2.0),
-        Commands.runOnce(m_shooter::stop, m_shooter));
+        Commands.runOnce(() -> {
+          m_shooter.stop();
+          m_hopper.stop();
+        }, m_shooter, m_hopper));
 
     
 
@@ -190,7 +198,7 @@ public class RobotContainer {
             return Commands.sequence(BlueLeftAuto.createTagAlignCommand(m_swerveSubsystem, m_aprilTag, id), shootSequence);
           }
           return Commands.runOnce(() -> SmartDashboard.putString("Vision/ScanResult", "No actionable tag"));
-        }, Set.of(m_swerveSubsystem, m_shooter));
+        }, Set.of(m_swerveSubsystem, m_shooter, m_hopper));
 
     return Commands.sequence(
         Commands.runOnce(() -> {

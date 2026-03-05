@@ -1,6 +1,9 @@
 package frc.robot.subsystems.intake;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.cscore.HttpCamera;
+import edu.wpi.first.cscore.VideoSource.ConnectionStrategy;
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFieldLayout.OriginPosition;
 import edu.wpi.first.apriltag.AprilTagFields;
@@ -65,6 +68,11 @@ public class AprilTag extends SubsystemBase {
     // on the Luma P1 (navigate to photonvision.local:5800 to verify/change)
     // -----------------------------------------------------------------------
     public static final String CAMERA_NAME = "Arducam_OV9782_USB_Camera";
+    private static final String LUMA_STREAM_NAME = "LumaP1";
+    private static final String[] LUMA_STREAM_URLS = {
+            "http://photonvision.local:1182/?action=stream",
+            "http://photonvision.local:1181/?action=stream"
+    };
 
     // -----------------------------------------------------------------------
     // Robot-to-camera transform (robot center at floor level → camera lens)
@@ -137,6 +145,8 @@ public class AprilTag extends SubsystemBase {
     // Latest accepted pose estimate and its std devs
     private Optional<EstimatedRobotPose> latestPoseEstimate = Optional.empty();
     private Matrix<N3, N1> latestStdDevs = SINGLE_TAG_BASE_STD_DEVS;
+    private HttpCamera lumaStreamCamera;
+    private boolean lumaStreamPublished = false;
 
     // -----------------------------------------------------------------------
     // Constructors
@@ -190,6 +200,7 @@ public class AprilTag extends SubsystemBase {
         }
 
         publishTelemetry();
+        ensureLiveFeedPublished();
     }
 
     // -----------------------------------------------------------------------
@@ -377,6 +388,7 @@ public class AprilTag extends SubsystemBase {
     /** Publish camera health and vision state to SmartDashboard every loop. */
     private void publishTelemetry() {
         SmartDashboard.putBoolean("Vision/CameraConnected", camera.isConnected());
+        SmartDashboard.putBoolean("Vision/LiveFeedPublished", lumaStreamPublished);
         SmartDashboard.putBoolean("Vision/HasTargets",
                 latestResultWithTargets.hasTargets());
         SmartDashboard.putNumber("Vision/NumTargets",
@@ -399,6 +411,22 @@ public class AprilTag extends SubsystemBase {
             SmartDashboard.putNumber("Vision/EstPoseDeg",  p.getRotation().getDegrees());
             SmartDashboard.putNumber("Vision/NumTagsUsed", est.targetsUsed.size());
         });
+    }
+
+    /**
+     * Publish Luma P1 live feed to CameraServer once PhotonVision reports the camera connected.
+     * This creates a stream entry that dashboards can display as a camera widget.
+     */
+    private void ensureLiveFeedPublished() {
+        if (lumaStreamPublished || !camera.isConnected()) {
+            return;
+        }
+
+        lumaStreamCamera = new HttpCamera(LUMA_STREAM_NAME, LUMA_STREAM_URLS);
+        lumaStreamCamera.setConnectionStrategy(ConnectionStrategy.kKeepOpen);
+        CameraServer.addCamera(lumaStreamCamera);
+        lumaStreamPublished = true;
+        DriverStation.reportWarning("AprilTag: Luma connected, published live feed '" + LUMA_STREAM_NAME + "'.", false);
     }
 
     /**

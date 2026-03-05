@@ -22,6 +22,14 @@ public class Shooter extends SubsystemBase {
   private static final int NEO_2_ID = 9; // moved to 9 to avoid conflict with hopper
 
   private static final double DEFAULT_SPEED = 1.0;
+  // Counter-rotation direction multipliers for each wheel pair.
+  private static final double KRAKEN_1_DIR = 1.0;
+  private static final double KRAKEN_2_DIR = -1.0;
+  private static final double NEO_1_DIR = 1.0;
+  private static final double NEO_2_DIR = -1.0;
+  // Pulley ratios (motor:wheel). Wheel speed = motor speed * (motorPulley / wheelPulley).
+  private static final double KRAKEN_DRIVE_RATIO = 24.0 / 30.0;
+  private static final double NEO_DRIVE_RATIO = 1.0 / 2.0;
 
   private final SparkMax neo1 = new SparkMax(NEO_1_ID, MotorType.kBrushless);
   private final SparkMax neo2 = new SparkMax(NEO_2_ID, MotorType.kBrushless);
@@ -85,11 +93,19 @@ public class Shooter extends SubsystemBase {
   /** Spin all shooter wheels at the given speed ([-1,1]). */
   public void spinAll(double speed) {
     double s = Math.max(-1.0, Math.min(1.0, speed));
-    // Use Phoenix 6 DutyCycleOut control to set percent output on TalonFX.
-    kraken1.setControl(new DutyCycleOut(s));
-    kraken2.setControl(new DutyCycleOut(s));
-    neo1.set(s);
-    neo2.set(s);
+    // Convert requested wheel-speed fraction to motor-speed fractions using pulley ratios.
+    // Normalize so the larger required motor demand maps to full output.
+    double krakenScale = 1.0 / KRAKEN_DRIVE_RATIO;
+    double neoScale = 1.0 / NEO_DRIVE_RATIO;
+    double norm = Math.max(krakenScale, neoScale);
+    double krakenOut = s * (krakenScale / norm);
+    double neoOut = s * (neoScale / norm);
+
+    // Counter-rotate each shooter pair so shafts/wheels pull game pieces through.
+    kraken1.setControl(new DutyCycleOut(krakenOut * KRAKEN_1_DIR));
+    kraken2.setControl(new DutyCycleOut(krakenOut * KRAKEN_2_DIR));
+    neo1.set(neoOut * NEO_1_DIR);
+    neo2.set(neoOut * NEO_2_DIR);
   }
 
   /** Stop all shooter motors. */

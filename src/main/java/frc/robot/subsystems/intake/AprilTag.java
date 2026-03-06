@@ -62,12 +62,15 @@ import org.photonvision.targeting.PhotonTrackedTarget;
  *   - All pose estimates are sanity-checked against field boundary + ambiguity
  */
 public class AprilTag extends SubsystemBase {
+    private static final boolean PUBLISH_VISION_TELEMETRY = false;
+    private static final int VISION_POLL_DIVISOR = 5; // 100 ms at 20 ms robot loop
+    private static final long VISION_RETRY_DELAY_MS = 1000;
 
     // -----------------------------------------------------------------------
     // Camera name — must match exactly what is set in the PhotonVision UI
     // on the Luma P1 (navigate to photonvision.local:5800 to verify/change)
     // -----------------------------------------------------------------------
-    public static final String CAMERA_NAME = "Arducam_OV9782_USB_Camera";
+    public static final String CAMERA_NAME = "OV9281";
     private static final String LUMA_STREAM_NAME = "LumaP1";
     private static final String[] LUMA_STREAM_URLS = {
             "http://photonvision.local:1182/?action=stream",
@@ -147,6 +150,9 @@ public class AprilTag extends SubsystemBase {
     private Matrix<N3, N1> latestStdDevs = SINGLE_TAG_BASE_STD_DEVS;
     private HttpCamera lumaStreamCamera;
     private boolean lumaStreamPublished = false;
+    private int pollTick = 0;
+    private long nextVisionRetryMs = 0;
+    private boolean warnedVisionUnavailable = false;
 
     // -----------------------------------------------------------------------
     // Constructors
@@ -168,9 +174,33 @@ public class AprilTag extends SubsystemBase {
     // -----------------------------------------------------------------------
     @Override
     public void periodic() {
+        if ((pollTick++ % VISION_POLL_DIVISOR) != 0) {
+            return;
+        }
+
+        long nowMs = System.currentTimeMillis();
+        if (nowMs < nextVisionRetryMs) {
+            return;
+        }
+
         // Call getAllUnreadResults() EXACTLY ONCE per loop.
         // It drains the internal FIFO — calling it again returns empty/stale data.
-        currentResults = camera.getAllUnreadResults();
+        try {
+            currentResults = camera.getAllUnreadResults();
+            warnedVisionUnavailable = false;
+        } catch (Exception e) {
+            currentResults = new ArrayList<>();
+            latestPoseEstimate = Optional.empty();
+            nextVisionRetryMs = nowMs + VISION_RETRY_DELAY_MS;
+            if (!warnedVisionUnavailable) {
+                DriverStation.reportWarning(
+                        "AprilTag vision temporarily disabled: camera '" + CAMERA_NAME
+                                + "' not available. Retrying periodically.",
+                        false);
+                warnedVisionUnavailable = true;
+            }
+            return;
+        }
 
         // Cache the most recent frame that had targets
         for (var result : currentResults) {
@@ -330,6 +360,9 @@ public class AprilTag extends SubsystemBase {
     // Per-tag telemetry (call from dashboard or vision logging routines)
     // -----------------------------------------------------------------------
     public void logVision(int tagId) {
+        if (!PUBLISH_VISION_TELEMETRY) {
+            return;
+        }
         Optional<PhotonTrackedTarget> targetOpt = getLatestTrackedTarget(tagId);
         boolean visible = targetOpt.isPresent();
         SmartDashboard.putBoolean("Vision/Tag" + tagId + "/Visible", visible);
@@ -387,6 +420,9 @@ public class AprilTag extends SubsystemBase {
 
     /** Publish camera health and vision state to SmartDashboard every loop. */
     private void publishTelemetry() {
+        if (!PUBLISH_VISION_TELEMETRY) {
+            return;
+        }
         SmartDashboard.putBoolean("Vision/CameraConnected", camera.isConnected());
         SmartDashboard.putBoolean("Vision/LiveFeedPublished", lumaStreamPublished);
         SmartDashboard.putBoolean("Vision/HasTargets",

@@ -38,6 +38,7 @@ public class SwerveSubsystem extends SubsystemBase {
 
     private SwerveDriveOdometry odometry;
     private Field2d field = new Field2d();
+    private ChassisSpeeds lastRequestedRobotRelativeSpeeds = new ChassisSpeeds();
 
     public SwerveSubsystem() {
         fieldGyro = new Gyro();
@@ -77,7 +78,6 @@ public class SwerveSubsystem extends SubsystemBase {
 
         // For Field driving 
         odometry = new SwerveDriveOdometry(kinematics, fieldGyro.getRotation2d(), getPositions());
-        SmartDashboard.putData("Field", field);
 
         RobotConfig config;
         try{
@@ -134,11 +134,6 @@ public class SwerveSubsystem extends SubsystemBase {
         // pose stuff 
         odometry.update(fieldGyro.getRotation2d(), getPositions());
         field.setRobotPose(getPose());
-        Pose2d pose = getPose();
-        SmartDashboard.putNumber("Pose X", pose.getX());
-        SmartDashboard.putNumber("Pose Y", pose.getY());
-        SmartDashboard.putNumber("Pose Rotation", pose.getRotation().getDegrees());
-
         logStates(); 
     }
 
@@ -185,8 +180,6 @@ public class SwerveSubsystem extends SubsystemBase {
         for (int i = 0; i < modules.length; i++) {
             positions[i] = modules[i].getPosition();
         }
-        SmartDashboard.putNumber("Swerve/SwerveModule distance", modules[0].getPosition().distanceMeters );
-        SmartDashboard.putNumber("Swerve/SwerveModule degree", modules[0].getPosition().angle.getDegrees() );
         return positions;
     } 
 
@@ -200,6 +193,8 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     public void driveRobotRelative(ChassisSpeeds robotRelativeSpeeds) {
+        lastRequestedRobotRelativeSpeeds = robotRelativeSpeeds;
+
         final double linearDeadbandMps = 0.02;
         final double angularDeadbandRadPerSec = 0.02;
 
@@ -242,42 +237,28 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     public void logStates() {
-        double[] loggingState = {
-            modules[0].getAngle().getRadians(),
-            modules[0].getVelocity(),
-            modules[1].getAngle().getRadians(),
-            modules[1].getVelocity(),
-            modules[2].getAngle().getRadians(),
-            modules[2].getVelocity(),
-            modules[3].getAngle().getRadians(),
-            modules[3].getVelocity(),
-        };
-        
-        SmartDashboard.putNumberArray("Module State", loggingState);
-        SmartDashboard.putNumber("Gyro Radians", fieldGyro.getRotation2d().getRadians());
+        double maxAbsDriveCommand = Math.max(
+                Math.max(Math.abs(modules[0].getLastDriveCommand()), Math.abs(modules[1].getLastDriveCommand())),
+                Math.max(Math.abs(modules[2].getLastDriveCommand()), Math.abs(modules[3].getLastDriveCommand())));
 
-        SmartDashboard.putNumber("Swerve/FL Velocity", modules[0].getVelocity());
-        SmartDashboard.putNumber("Swerve/FR Velocity", modules[1].getVelocity());
-        SmartDashboard.putNumber("Swerve/BL Velocity", modules[2].getVelocity());
-        SmartDashboard.putNumber("Swerve/BR Velocity", modules[3].getVelocity());
-        SmartDashboard.putNumber("Swerve/FL AbsDeg", modules[0].getAbsoluteEncoderDegrees());
-        SmartDashboard.putNumber("Swerve/FR AbsDeg", modules[1].getAbsoluteEncoderDegrees());
-        SmartDashboard.putNumber("Swerve/BL AbsDeg", modules[2].getAbsoluteEncoderDegrees());
-        SmartDashboard.putNumber("Swerve/BR AbsDeg", modules[3].getAbsoluteEncoderDegrees());
+        boolean requestedMotion =
+                Math.abs(lastRequestedRobotRelativeSpeeds.vxMetersPerSecond) > 0.10
+                || Math.abs(lastRequestedRobotRelativeSpeeds.vyMetersPerSecond) > 0.10
+                || Math.abs(lastRequestedRobotRelativeSpeeds.omegaRadiansPerSecond) > 0.10;
+        boolean commandReachingModules = maxAbsDriveCommand > 0.12;
 
-        DriverStation.getAlliance().ifPresent(alliance -> SmartDashboard.putString("Alliance Color", alliance.toString()));
+        SmartDashboard.putBoolean("Swerve/Diag/RequestedMotion", requestedMotion);
+        SmartDashboard.putBoolean("Swerve/Diag/CommandReachingModules", commandReachingModules);
+        SmartDashboard.putNumber("Swerve/Diag/MaxDriveCmdAbs", maxAbsDriveCommand);
     }
     
     /**
      * Stop driving (zero wheel speeds) but keep current wheel angles.
      */
     public void stop() {
-        SwerveModuleState[] current = getStates();
-        SwerveModuleState[] stopStates = new SwerveModuleState[current.length];
-        for (int i = 0; i < current.length; i++) {
-            stopStates[i] = new SwerveModuleState(0.0, current[i].angle);
+        for (SwerveModule module : modules) {
+            module.stopMotors();
         }
-        setStates(stopStates);
     }
 
     /**
@@ -296,4 +277,3 @@ public class SwerveSubsystem extends SubsystemBase {
     }
     
 }
-

@@ -18,18 +18,28 @@ import edu.wpi.first.math.kinematics.SwerveModuleState;
 import frc.robot.Constants.SwerveConstants;
 
 public class SwerveModule {
+    private static final double DRIVE_SUPPRESS_ANGLE_DEG = 45.0;
+    private static final double TURN_DEADBAND_DEG = 2.0;
+    private static final double DRIVE_REQUEST_DEADBAND_MPS = 0.18;
+
     private SparkMax driveMotor;
     private SparkMax turnMotor;
     private CoreCANcoder absoluteEncoder;
     private final double absoluteOffsetRad;
+    private final int absoluteEncoderId;
 
     private RelativeEncoder driveEncoder;
+    private double lastDriveCommand = 0.0;
+    private double lastTurnCommand = 0.0;
+    private Rotation2d lastValidAngle = new Rotation2d();
+    private boolean hasValidAngle = false;
 
 
     public SwerveModule(int driveMotorPort, int turningMotorPort, int absoluteEncoderPort, boolean driveInverted, boolean turnInverted, double angleOffsetRad) {
         driveMotor = createMotorController(driveMotorPort, driveInverted, true);
         turnMotor = createMotorController(turningMotorPort, turnInverted, false);
         absoluteEncoder = new CoreCANcoder(absoluteEncoderPort);
+        absoluteEncoderId = absoluteEncoderPort;
         absoluteOffsetRad = angleOffsetRad;
 
         driveEncoder = createEncoder(driveMotor);
@@ -88,6 +98,7 @@ public class SwerveModule {
     public void setTargetState(SwerveModuleState targetState, PIDController drivePID, ProfiledPIDController turnPID) {
         // get angle + optimize angle 
         Rotation2d currentAngle = getAngle();
+        boolean canCoderOnline = isCanCoderOnline();
         // Optimize the desired state relative to the current angle. The built-in SwerveModuleState.optimize
         // is deprecated, so perform an equivalent optimization here to avoid the deprecation warning.
         SwerveModuleState optimizedState = optimizeStateForMinimalRotation(targetState, currentAngle);
@@ -97,16 +108,33 @@ public class SwerveModule {
         double driveFeedforward = optimizedState.speedMetersPerSecond / SwerveConstants.MAX_TRANSLATIONAL_SPEED;
         double driveFeedback = drivePID.calculate(getVelocity(), optimizedState.speedMetersPerSecond);
         double driveOutput = driveFeedforward + driveFeedback;
-        double turnOutput = turnPID.calculate(getAngle().getRadians(), optimizedState.angle.getRadians());
+        double turnOutput = turnPID.calculate(currentAngle.getRadians(), optimizedState.angle.getRadians());
 
         // Suppress small angle-hunting around setpoint to reduce module twitch.
         double angleErrorRad = MathUtil.angleModulus(optimizedState.angle.getRadians() - currentAngle.getRadians());
-        if (Math.abs(angleErrorRad) < Math.toRadians(1.5)) {
+        if (Math.abs(angleErrorRad) < Math.toRadians(TURN_DEADBAND_DEG)) {
+            turnOutput = 0.0;
+        }
+        // If the CANcoder is offline/invalid, avoid unstable turn control and still allow drive output.
+        if (!canCoderOnline) {
             turnOutput = 0.0;
         }
 
         driveOutput = MathUtil.clamp(driveOutput, -1.0, 1.0);
+        // Kill tiny speed requests to prevent low-speed chatter.
+        if (Math.abs(optimizedState.speedMetersPerSecond) < DRIVE_REQUEST_DEADBAND_MPS) {
+            driveOutput = 0.0;
+        }
+
+        // Do not drive while module heading is still far from target.
+        double absAngleErrorDeg = Math.abs(Math.toDegrees(angleErrorRad));
+        if (absAngleErrorDeg > DRIVE_SUPPRESS_ANGLE_DEG) {
+            driveOutput = 0.0;
+        }
         turnOutput = MathUtil.clamp(turnOutput, -1.0, 1.0);
+
+        lastDriveCommand = driveOutput;
+        lastTurnCommand = turnOutput;
         
         turnMotor.set(turnOutput);
         driveMotor.set(driveOutput);
@@ -125,16 +153,50 @@ public class SwerveModule {
     public double getAbsoluteEncoderPos() {
         // Phoenix6 absolute position is in rotations [0,1). Convert to radians and apply module offset.
         double absoluteRotations = absoluteEncoder.getAbsolutePosition().getValueAsDouble();
-        return (absoluteRotations * SwerveConstants.TWO_PI) - absoluteOffsetRad;
+        if (!Double.isFinite(absoluteRotations) || Math.abs(absoluteRotations) > 1.5) {
+            return hasValidAngle ? lastValidAngle.getRadians() : 0.0;
+        }
+        double angleRad = (absoluteRotations * SwerveConstants.TWO_PI) - absoluteOffsetRad;
+        lastValidAngle = Rotation2d.fromRadians(MathUtil.angleModulus(angleRad));
+        hasValidAngle = true;
+        return angleRad;
     }
 
     public double getAbsoluteEncoderDegrees() {
         return Math.toDegrees(getAbsoluteEncoderPos());
     }
 
+    public int getConfiguredCanCoderId() {
+        return absoluteEncoderId;
+    }
+
+    public boolean isCanCoderOnline() {
+        try {
+            double absoluteRotations = absoluteEncoder.getAbsolutePosition().getValueAsDouble();
+            return Double.isFinite(absoluteRotations) && Math.abs(absoluteRotations) <= 1.5;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public Rotation2d getAngle() {
         // Wrap to [-pi, pi] to match continuous-input PID configuration.
         return Rotation2d.fromRadians(MathUtil.angleModulus(getAbsoluteEncoderPos()));
+    }
+
+    public double getLastDriveCommand() {
+        return lastDriveCommand;
+    }
+
+    public double getLastTurnCommand() {
+        return lastTurnCommand;
+    }
+
+    public void stopMotors() {
+        driveMotor.stopMotor();
+        turnMotor.stopMotor();
+        lastDriveCommand = 0.0;
+        lastTurnCommand = 0.0;
     }
 
     public SwerveModuleState getState() {

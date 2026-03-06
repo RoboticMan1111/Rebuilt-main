@@ -9,7 +9,6 @@ import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 public class intake extends SubsystemBase {
@@ -100,9 +99,6 @@ public class intake extends SubsystemBase {
       pivotMotor.set(clampPivotOutput(output));
     }
 
-    SmartDashboard.putNumber("Intake/Pivot Position Rot", getPivotPositionRot());
-    SmartDashboard.putNumber("Intake/Pivot Target Rot", targetPositionRot);
-    SmartDashboard.putBoolean("Intake/Pivot At Target", atTargetPosition());
   }
 
   public void stop() {

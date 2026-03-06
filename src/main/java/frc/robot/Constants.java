@@ -23,6 +23,10 @@ public final class Constants {
     public static final double DEADBAND = 0.15;
     public static final double TRANSLATION_EXPO = 2.0;
     public static final double ROTATION_EXPO = 2.0;
+    public static final double TELEOP_TRANSLATION_SCALE = 1.0;
+    public static final double TELEOP_ROTATION_SCALE = 1.0;
+    public static final double TRANSLATION_SLEW_RATE = 6.0;
+    public static final double ROTATION_SLEW_RATE = 8.0;
   }
 
   public static class SwerveConstants {
@@ -30,7 +34,7 @@ public final class Constants {
     // Motor Controller and Encoder Configuration
     public static final double VOLTAGE_COMPENSATION = 10;
     public static final int CURRENT_LIMIT = 40;
-    public static final double RAMP_RATE = 0.05;
+    public static final double RAMP_RATE = 0.20;
     public static final double WHEEL_DIAMETER_IN = 4;
     public static final double WHEEL_CIRCUMFERENCE_IN = WHEEL_DIAMETER_IN*Math.PI;
     public static final double DRIVE_GEAR_RATIO = 8.14;
@@ -48,17 +52,18 @@ public final class Constants {
   // Keep module/electrical order aligned with IDS array above: FL, FR, BL, BR.
   public static final boolean[] DRIVE_MOTOR_INVERTED = {false, false, false, false};
   public static final boolean[] TURN_MOTOR_INVERTED = {false, false, false, false};
-  // CANcoder mechanical zero offsets in radians. Tune on robot if wheel zeros do not match.
-  public static final double[] CANCODER_OFFSETS_RAD = {-2.28102, -2.28102, -2.28102, -2.28102};
+  // CANcoder mechanical zero offsets in radians (module order: FL, FR, BL, BR).
+  // Values derived from current on-robot readings so current module pose is treated as zero.
+  public static final double[] CANCODER_OFFSETS_RAD = {1.47262, 1.56773, -1.56926, -2.66299};
 
     // PID Values
     
     
     public static final double[] DRIVE_PID_VALUES = {0.015, 0.0, 0.0};
-    public static final double[] TURN_PID_VALUES = {0.35, 0.0, 0.0};
+    public static final double[] TURN_PID_VALUES = {0.35, 0.0, 0.005};
 
-    public static final double ANGLE_MAX_VELOCITY = 7.0;
-    public static final double ANGLE_MAX_ACCELERATION = 30.0;
+    public static final double ANGLE_MAX_VELOCITY = 4.0;
+    public static final double ANGLE_MAX_ACCELERATION = 12.0;
     
 
     // public static final double PID_RANGE = 0.9;
